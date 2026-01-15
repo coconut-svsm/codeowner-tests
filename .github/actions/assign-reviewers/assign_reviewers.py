@@ -123,15 +123,18 @@ def match_files_to_reviewers(changed_files, rules):
 
         # Find all matching patterns (last one wins)
         for pattern, pattern_reviewers in rules:
+            # Normalize pattern: remove leading slash if present (CODEOWNERS uses /path/)
+            normalized_pattern = pattern.lstrip('/')
+
             # Handle directory patterns with proper boundary matching
-            if pattern.endswith('/'):
+            if normalized_pattern.endswith('/'):
                 # Remove trailing slash for comparison
-                dir_pattern = pattern.rstrip('/')
+                dir_pattern = normalized_pattern.rstrip('/')
                 # Check if file is in this directory (exact boundary match)
                 if file_path.startswith(dir_pattern + '/') or file_path == dir_pattern:
                     matched_reviewers = pattern_reviewers
             # Handle glob patterns
-            elif fnmatch(file_path, pattern):
+            elif fnmatch(file_path, normalized_pattern):
                 matched_reviewers = pattern_reviewers
 
         all_reviewers.extend(matched_reviewers)
