@@ -56,18 +56,25 @@ def email_to_username_via_commits(email, repo, token):
         'X-GitHub-Api-Version': '2022-11-28'
     }
 
+    print(f"  DEBUG: Searching commits - URL: {url}")
     req = urllib.request.Request(url, headers=headers)
 
     try:
         with urllib.request.urlopen(req) as response:
             result = json.loads(response.read().decode())
+            print(f"  DEBUG: Commit search returned {result['total_count']} results")
             if result['total_count'] > 0 and result['items'][0].get('author'):
                 username = result['items'][0]['author']['login']
                 print(f"  Resolved {email} -> @{username} (via commits)")
                 return username
             return None
     except urllib.error.HTTPError as e:
-        print(f"  Commit search failed for {email}: {e}")
+        error_body = e.read().decode() if hasattr(e, 'read') else ''
+        print(f"  Commit search failed for {email}: {e.code} {e.reason}")
+        print(f"  Error details: {error_body}")
+        return None
+    except Exception as e:
+        print(f"  Commit search error for {email}: {type(e).__name__}: {e}")
         return None
 
 
@@ -86,11 +93,13 @@ def email_to_username(email, token, repo=None, retry_count=0):
         'X-GitHub-Api-Version': '2022-11-28'
     }
 
+    print(f"  DEBUG: Searching users - URL: {url}")
     req = urllib.request.Request(url, headers=headers)
 
     try:
         with urllib.request.urlopen(req) as response:
             result = json.loads(response.read().decode())
+            print(f"  DEBUG: User search returned {result['total_count']} results")
             if result['total_count'] > 0:
                 username = result['items'][0]['login']
                 print(f"  Resolved {email} -> @{username}")
@@ -101,7 +110,11 @@ def email_to_username(email, token, repo=None, retry_count=0):
             print(f"  Rate limited, waiting 60s before retry {retry_count + 1}/3")
             time.sleep(60)
             return email_to_username(email, token, repo, retry_count + 1)
-        print(f"  User search failed for {email}: {e}")
+        error_body = e.read().decode() if hasattr(e, 'read') else ''
+        print(f"  User search failed for {email}: {e.code} {e.reason}")
+        print(f"  Error details: {error_body}")
+    except Exception as e:
+        print(f"  User search error for {email}: {type(e).__name__}: {e}")
 
     # Strategy 2: Search commits by email (works for private emails too)
     if repo:
