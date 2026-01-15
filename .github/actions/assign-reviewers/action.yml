@@ -1,0 +1,18 @@
+name: 'Assign Reviewers from File'
+description: 'Assigns reviewers based on a CODEOWNERS-style file with support for emails'
+inputs:
+  token:
+    description: 'GitHub token for API access'
+    required: true
+  config:
+    description: 'Path to the reviewers configuration file'
+    required: false
+    default: 'REVIEWERS'
+runs:
+  using: 'composite'
+  steps:
+    - run: python3 ${{ github.action_path }}/assign_reviewers.py
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.token }}
+        INPUT_CONFIG: ${{ inputs.config }}
