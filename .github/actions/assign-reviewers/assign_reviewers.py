@@ -45,9 +45,46 @@ def parse_reviewers_file(file_path):
     return rules
 
 
-def email_to_username(email, token, retry_count=0):
-    """Convert email to GitHub username using the search API."""
-    # URL encode the email
+def email_to_username_via_commits(email, repo, token):
+    """Convert email to GitHub username by searching commits in the repo."""
+    # Search for commits by this email in the repository
+    encoded_email = urllib.parse.quote(email)
+    url = f"https://api.github.com/search/commits?q=author-email:{encoded_email}+repo:{repo}"
+    headers = {
+        'Authorization': f'Bearer {token}',
+        'Accept': 'application/vnd.github+json',
+        'X-GitHub-Api-Version': '2022-11-28'
+    }
+
+    print(f"  DEBUG: Searching commits - URL: {url}")
+    req = urllib.request.Request(url, headers=headers)
+
+    try:
+        with urllib.request.urlopen(req) as response:
+            result = json.loads(response.read().decode())
+            print(f"  DEBUG: Commit search returned {result['total_count']} results")
+            if result['total_count'] > 0 and result['items'][0].get('author'):
+                username = result['items'][0]['author']['login']
+                print(f"  Resolved {email} -> @{username} (via commits)")
+                return username
+            return None
+    except urllib.error.HTTPError as e:
+        error_body = e.read().decode() if hasattr(e, 'read') else ''
+        print(f"  Commit search failed for {email}: {e.code} {e.reason}")
+        print(f"  Error details: {error_body}")
+        return None
+    except Exception as e:
+        print(f"  Commit search error for {email}: {type(e).__name__}: {e}")
+        return None
+
+
+def email_to_username(email, token, repo=None, retry_count=0):
+    """Convert email to GitHub username using multiple strategies.
+
+    1. First tries user search API (works for public emails)
+    2. Falls back to commit search in repo (works for private emails)
+    """
+    # Strategy 1: Search users by email (only works for public emails)
     encoded_email = urllib.parse.quote(email)
     url = f"https://api.github.com/search/users?q={encoded_email}+in:email"
     headers = {
@@ -56,29 +93,40 @@ def email_to_username(email, token, retry_count=0):
         'X-GitHub-Api-Version': '2022-11-28'
     }
 
+    print(f"  DEBUG: Searching users - URL: {url}")
     req = urllib.request.Request(url, headers=headers)
 
     try:
         with urllib.request.urlopen(req) as response:
             result = json.loads(response.read().decode())
+            print(f"  DEBUG: User search returned {result['total_count']} results")
             if result['total_count'] > 0:
                 username = result['items'][0]['login']
                 print(f"  Resolved {email} -> @{username}")
                 return username
-            else:
-                print(f"  Warning: Could not resolve email {email} to GitHub username")
-                return None
     except urllib.error.HTTPError as e:
         # Handle rate limiting
         if e.code == 403 and retry_count < 3:
             print(f"  Rate limited, waiting 60s before retry {retry_count + 1}/3")
             time.sleep(60)
-            return email_to_username(email, token, retry_count + 1)
-        print(f"  Error looking up email {email}: {e}")
-        return None
+            return email_to_username(email, token, repo, retry_count + 1)
+        error_body = e.read().decode() if hasattr(e, 'read') else ''
+        print(f"  User search failed for {email}: {e.code} {e.reason}")
+        print(f"  Error details: {error_body}")
+    except Exception as e:
+        print(f"  User search error for {email}: {type(e).__name__}: {e}")
+
+    # Strategy 2: Search commits by email (works for private emails too)
+    if repo:
+        username = email_to_username_via_commits(email, repo, token)
+        if username:
+            return username
+
+    print(f"  Warning: Could not resolve email {email} to GitHub username")
+    return None
 
 
-def resolve_reviewers(reviewers, token):
+def resolve_reviewers(reviewers, token, repo):
     """Resolve reviewer identifiers to GitHub usernames.
 
     Handles:
@@ -101,7 +149,7 @@ def resolve_reviewers(reviewers, token):
             resolved.append(reviewer[1:])  # Remove @ prefix
         # Email: convert to username (proper validation)
         elif email_pattern.match(reviewer):
-            username = email_to_username(reviewer, token)
+            username = email_to_username(reviewer, token, repo)
             if username:
                 resolved.append(username)
         # Plain username
@@ -264,7 +312,7 @@ def main():
     # Resolve reviewers (emails to usernames)
     if matched_reviewers:
         print("Resolving reviewer identifiers...")
-        reviewers, teams = resolve_reviewers(matched_reviewers, github_token)
+        reviewers, teams = resolve_reviewers(matched_reviewers, github_token, repo)
 
         # Assign reviewers
         if reviewers or teams:

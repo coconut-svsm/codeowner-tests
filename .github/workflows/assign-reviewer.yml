@@ -1,12 +1,14 @@
 name: AssignReviewers
 
 on:
-  pull_request:
-    types: [opened, ready_for_review]
+  pull_request_target:
+    types: [opened, ready_for_review, synchronize, reopened]
 
 jobs:
   add-reviewer:
     runs-on: ubuntu-latest
+    # Skip if PR is in draft state
+    if: github.event.pull_request.draft == false
     permissions:
       pull-requests: write
       contents: read
