@@ -1,18 +1,18 @@
 name: AssignReviewers
 
 on:
-  pull_request
+  pull_request:
+    types: [opened, ready_for_review]
 
 jobs:
   add-reviewer:
     runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: read
     steps:
-      - uses: actions/checkout@v3
-      - uses: ohnogumi/auto-reviewers@v0.0.5
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/assign-reviewers
         with:
-         # required
-         # If you assign team for reviewer, you generate a personal access tokens with workflow scope. 
-         token: "${{ secrets.GITHUB_TOKEN }}" # "${{ secrets.PERSONAL_TOKEN }}"
-
-         # optional 
-         config: "REVIEWERS"
+          token: ${{ secrets.GITHUB_TOKEN }}
+          config: "REVIEWERS"
